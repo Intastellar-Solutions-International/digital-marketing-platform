@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+enum AdPlatform {
+  FACEBOOK
+  GOOGLE
+  MICROSOFT
+  CAPTERRA
+  LINKEDIN
+}
+
+model Tenant {
+  id          String             @id @default(cuid())
+  name        String
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  memberships TenantMembership[]
+  adAccounts  AdAccountConnection[]
+  campaigns   Campaign[]
+}
+
+model User {
+  id          String             @id @default(cuid())
+  email       String             @unique
+  passwordHash String
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  memberships TenantMembership[]
+}
+
+model TenantMembership {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  role      Role
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([tenantId, userId])
+}
+
+model AdAccountConnection {
+  id             String     @id @default(cuid())
+  tenantId       String
+  platform       AdPlatform
+  externalAccountId String
+  externalAccountName String
+  currency       String
+  timezone       String
+
+  accessToken        String?
+  refreshToken       String?
+  accessTokenExpires DateTime?
+  scope              String?
+
+  status        String   @default("active")
+  lastSyncAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  campaigns     Campaign[]
+  syncLogs      SyncLog[]
+
+  @@index([tenantId, platform])
+}
+
+model Campaign {
+  id                     String   @id @default(cuid())
+  tenantId               String
+  adAccountConnectionId  String
+  platform               AdPlatform
+  platformCampaignId     String
+  name                   String
+  status                 String
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant                 Tenant   @relation(fields: [tenantId], references: [id])
+  adAccountConnection    AdAccountConnection @relation(fields: [adAccountConnectionId], references: [id])
+  metricSnapshots        CampaignMetricSnapshot[]
+
+  @@unique([adAccountConnectionId, platformCampaignId])
+  @@index([tenantId, platform])
+}
+
+model CampaignMetricSnapshot {
+  id          String   @id @default(cuid())
+  campaignId  String
+  date        DateTime
+  hour        Int?     // 0-23 for hourly granularity
+
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  spend       Float    @default(0)
+  conversions Float    @default(0)
+  revenue     Float    @default(0)
+
+  ctr         Float    @default(0)
+  cpc         Float    @default(0)
+  cpm         Float    @default(0)
+  cpa         Float    @default(0)
+  roas        Float    @default(0)
+
+  raw         Json?
+
+  createdAt   DateTime @default(now())
+
+  campaign    Campaign @relation(fields: [campaignId], references: [id])
+
+  @@index([campaignId, date, hour])
+}
+
+model SyncLog {
+  id            String    @id @default(cuid())
+  adAccountConnectionId String
+  platform      AdPlatform
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  status        String    @default("running") // running, success, failed
+  message       String?
+  errorCode     String?
+
+  adAccountConnection AdAccountConnection @relation(fields: [adAccountConnectionId], references: [id])
+
+  @@index([platform, startedAt])
+}
+
